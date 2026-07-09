@@ -54,11 +54,13 @@ upstream skills were removed (access is our `access-ctl.ts`).
 Our whole delta lives as reviewable diffs in `patches/`, applied in order on
 pristine upstream `server.ts`:
 
-1. `patches/discord-access-group-key-validation.patch` — chaiklang (Yutthakit)
+1. `patches/001-discord-access-group-key-validation.patch` — chaiklang (Yutthakit)
    group-key footgun guard (upstream PR#2807, closed)
-2. `patches/arra-oracle-discord-fork.patch` — this fork: identity, tagging
+2. `patches/002-arra-oracle-discord-fork.patch` — this fork: identity, tagging
    (`mention_users`/`mention_roles` + scoped `allowed_mentions`), `create_thread`,
    `toArchiveDuration` helper, instructions
+
+Numeric prefixes are the apply order: `for p in patches/[0-9]*.patch; do git apply "$p"; done`
 
 Round-trip verified: upstream + both patches == `server.ts` here, byte-identical.
 When upstream ships a new version, re-apply the stack (`git apply`) and regenerate
