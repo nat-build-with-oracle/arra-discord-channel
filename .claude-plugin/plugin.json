@@ -1,0 +1,13 @@
+{
+  "name": "arra-oracle-discord",
+  "description": "arra-oracle-discord — our own Discord channel for Claude Code (forked from claude-plugins-official/discord 0.0.4). Adds Hermes-style create_thread + outbound tagging. Access managed by .discord/access-ctl.ts (no hand-editing).",
+  "version": "0.1.0",
+  "keywords": [
+    "discord",
+    "messaging",
+    "channel",
+    "mcp",
+    "hermes",
+    "thread"
+  ]
+}
