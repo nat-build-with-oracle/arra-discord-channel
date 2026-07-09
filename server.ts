@@ -35,7 +35,7 @@ import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join, sep } from 'path'
-import { resolveContact, nameFor } from './contacts.ts'
+import { resolveContact, nameFor } from './config.ts'
 
 const STATE_DIR = process.env.DISCORD_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'discord')
 // debug log to BOTH stderr and a file — subprocess stderr is hard to inspect live
