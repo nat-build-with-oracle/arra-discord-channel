@@ -32,11 +32,17 @@ import {
   type Interaction,
 } from 'discord.js'
 import { randomBytes } from 'crypto'
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join, sep } from 'path'
 
 const STATE_DIR = process.env.DISCORD_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'discord')
+// debug log to BOTH stderr and a file — subprocess stderr is hard to inspect live
+// (same idiom as mqtt-channel/server.ts dlog; proven during the mqtt silent-inbound hunt)
+const dlog = (m: string) => {
+  process.stderr.write(m)
+  try { appendFileSync(join(STATE_DIR, 'arra-discord.log'), `${new Date().toISOString()} ${m}`) } catch {}
+}
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const ENV_FILE = join(STATE_DIR, '.env')
@@ -120,6 +126,8 @@ type Access = {
   textChunkLimit?: number
   /** Split on paragraph boundaries instead of hard char count. */
   chunkMode?: 'length' | 'newline'
+  /** Hermes-style auto_thread: when the bot is @-mentioned in a channel (not already a thread), open a thread off the message and route the reply into it. */
+  autoThread?: boolean
 }
 
 function defaultAccess(): Access {
@@ -176,6 +184,7 @@ function readAccessFile(): Access {
       replyToMode: parsed.replyToMode,
       textChunkLimit: parsed.textChunkLimit,
       chunkMode: parsed.chunkMode,
+      autoThread: parsed.autoThread,
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return defaultAccess()
@@ -895,12 +904,14 @@ client.on('interactionCreate', async (interaction: Interaction) => {
 })
 
 client.on('messageCreate', msg => {
+  dlog(`arra-discord: RX ch=${msg.channelId} author=${msg.author.username}${msg.author.bot ? '(bot)' : ''} content=${JSON.stringify(msg.content.slice(0, 40))}\n`)
   if (msg.author.bot) return
-  handleInbound(msg).catch(e => process.stderr.write(`discord: handleInbound failed: ${e}\n`))
+  handleInbound(msg).catch(e => dlog(`arra-discord: handleInbound failed: ${e}\n`))
 })
 
 async function handleInbound(msg: Message): Promise<void> {
   const result = await gate(msg)
+  dlog(`arra-discord: gate → ${result.action} (ch=${msg.channelId})\n`)
 
   if (result.action === 'drop') return
 
@@ -916,7 +927,7 @@ async function handleInbound(msg: Message): Promise<void> {
     return
   }
 
-  const chat_id = msg.channelId
+  let chat_id = msg.channelId
 
   if (msg.channel.type === ChannelType.DM) {
     dmChannelUsers.set(chat_id, msg.author.id)
@@ -951,6 +962,25 @@ async function handleInbound(msg: Message): Promise<void> {
     void msg.react(access.ackReaction).catch(() => {})
   }
 
+  // auto_thread (Hermes-style): when the bot is @-mentioned in a channel that
+  // isn't already a thread, open a thread off the triggering message and route
+  // the conversation into it — chat_id becomes the new thread id, so the model's
+  // reply lands in the thread with no extra tool call. Gated on a real mention so
+  // ambient channel chatter doesn't spawn a thread per message.
+  if (access.autoThread && !msg.channel.isThread() && msg.channel.type !== ChannelType.DM) {
+    try {
+      if (await isMentioned(msg, access.mentionPatterns)) {
+        const title =
+          msg.content.replace(/<@!?&?\d+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'thread'
+        const thread = await msg.startThread({ name: title })
+        chat_id = thread.id
+        dlog(`arra-discord: auto_thread → ${thread.id} off msg ${msg.id}\n`)
+      }
+    } catch (e) {
+      dlog(`arra-discord: auto_thread failed: ${e}\n`)
+    }
+  }
+
   // Attachments are listed (name/type/size) but not downloaded — the model
   // calls download_attachment when it wants them. Keeps the notification
   // fast and avoids filling inbox/ with images nobody looked at.
@@ -977,16 +1007,18 @@ async function handleInbound(msg: Message): Promise<void> {
         ...(atts.length > 0 ? { attachment_count: String(atts.length), attachments: atts.join('; ') } : {}),
       },
     },
+  }).then(() => {
+    dlog(`arra-discord: → notify chat_id=${chat_id} content=${JSON.stringify(content.slice(0, 40))}\n`)
   }).catch(err => {
-    process.stderr.write(`discord channel: failed to deliver inbound to Claude: ${err}\n`)
+    dlog(`arra-discord: failed to deliver inbound to Claude: ${err}\n`)
   })
 }
 
 client.once('ready', c => {
-  process.stderr.write(`discord channel: gateway connected as ${c.user.tag}\n`)
+  dlog(`arra-discord: gateway connected as ${c.user.tag}\n`)
 })
 
 client.login(TOKEN).catch(err => {
-  process.stderr.write(`discord channel: login failed: ${err}\n`)
+  dlog(`arra-discord: login FAILED: ${err}\n`)
   process.exit(1)
 })
