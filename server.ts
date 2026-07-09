@@ -967,19 +967,29 @@ async function handleInbound(msg: Message): Promise<void> {
   // the conversation into it — chat_id becomes the new thread id, so the model's
   // reply lands in the thread with no extra tool call. Gated on a real mention so
   // ambient channel chatter doesn't spawn a thread per message.
-  if (access.autoThread && !msg.channel.isThread() && msg.channel.type !== ChannelType.DM) {
+  if (
+    access.autoThread &&
+    !msg.channel.isThread() &&
+    msg.channel.type !== ChannelType.DM &&
+    (await isMentioned(msg, access.mentionPatterns))
+  ) {
     try {
-      if (await isMentioned(msg, access.mentionPatterns)) {
-        const title =
-          msg.content.replace(/<@!?&?\d+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'thread'
-        const thread = await msg.startThread({ name: title })
-        chat_id = thread.id
-        dlog(`arra-discord: auto_thread → ${thread.id} off msg ${msg.id}\n`)
-      }
+      const title =
+        msg.content.replace(/<@!?&?\d+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'thread'
+      const thread = await msg.startThread({ name: title })
+      chat_id = thread.id
+      dlog(`arra-discord: auto_thread → ${thread.id} off msg ${msg.id}\n`)
     } catch (e) {
-      dlog(`arra-discord: auto_thread failed: ${e}\n`)
+      // Hermes lesson (#20243): auto_thread IS the routing target — on failure do NOT
+      // silently fall back to the parent channel (that leaks the task into a shared
+      // room). Surface a visible error and skip delivery for this message.
+      dlog(`arra-discord: auto_thread FAILED — skipping delivery: ${e}\n`)
+      await msg.reply('⚠️ could not open a thread — please try again in a moment').catch(() => {})
+      return
     }
   }
+  // (starter-message dedup that Hermes needs is handled upstream by `if (msg.author.bot) return`
+  //  in the messageCreate handler — the thread-starter event is authored by our own bot.)
 
   // Attachments are listed (name/type/size) but not downloaded — the model
   // calls download_attachment when it wants them. Keeps the notification

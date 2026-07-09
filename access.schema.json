@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "arra-oracle-discord access.json",
+  "description": "Access control for the arra-oracle-discord channel. Managed by .discord/access-ctl.ts — never hand-edit. This schema gives editors autocomplete + inline type errors (the JSON equivalent of viem's TS types).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dmPolicy", "allowFrom", "groups", "pending"],
+  "definitions": {
+    "snowflake": {
+      "type": "string",
+      "pattern": "^[0-9]{5,}$",
+      "description": "A Discord snowflake id (numeric string)."
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requireMention", "allowFrom"],
+      "description": "Per-channel policy. Only requireMention + allowFrom are honored (chaiklang PR#2807 guard).",
+      "properties": {
+        "requireMention": {
+          "type": "boolean",
+          "description": "true = the bot only acts when @-mentioned or replied-to in this channel."
+        },
+        "allowFrom": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/snowflake" },
+          "description": "User ids allowed to drive the bot here. [] = EVERYONE (empty = allow-all, not deny-all)."
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "dmPolicy": {
+      "enum": ["pairing", "allowlist", "disabled"],
+      "description": "DM handling. 'disabled' is a GLOBAL master-off — it drops EVERYTHING including guild channels, not just DMs."
+    },
+    "allowFrom": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/snowflake" },
+      "description": "Top-level DM allowlist (snowflakes). [] = no DMs get through under allowlist policy."
+    },
+    "groups": {
+      "type": "object",
+      "description": "Guild channels the bot is active in, keyed by CHANNEL id (not guild id). Use '*' for a catch-all.",
+      "additionalProperties": { "$ref": "#/definitions/group" },
+      "propertyNames": { "anyOf": [{ "$ref": "#/definitions/snowflake" }, { "const": "*" }] }
+    },
+    "pending": {
+      "type": "object",
+      "description": "In-flight pairing codes (managed at runtime; leave {})."
+    },
+    "mentionPatterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extra regexes that count as a mention (top-level, not per-group)."
+    },
+    "ackReaction": {
+      "type": "string",
+      "description": "Emoji reacted on receipt. Empty string disables."
+    },
+    "replyToMode": {
+      "enum": ["off", "first", "all"],
+      "description": "Which reply chunks get Discord's reply reference."
+    },
+    "textChunkLimit": {
+      "type": "number",
+      "description": "Max chars per outbound message before splitting (default 2000)."
+    },
+    "chunkMode": {
+      "enum": ["length", "newline"],
+      "description": "Split long replies by hard char count or paragraph boundary."
+    },
+    "autoThread": {
+      "type": "boolean",
+      "description": "Hermes-style: @-mention in a channel → the bot opens a thread and replies inside it."
+    }
+  }
+}
