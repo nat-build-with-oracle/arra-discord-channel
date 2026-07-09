@@ -25,6 +25,8 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ActionRowBuilder,
+  ThreadAutoArchiveDuration,
+  type AnyThreadChannel,
   type Message,
   type Attachment,
   type Interaction,
@@ -449,6 +451,17 @@ function safeAttName(att: Attachment): string {
   return (att.name ?? att.id).replace(/[\[\]\r\n;]/g, '_')
 }
 
+// Map a raw minutes value onto discord.js's ThreadAutoArchiveDuration enum —
+// Discord only accepts these four values; anything else falls back to one day.
+function toArchiveDuration(v: unknown): ThreadAutoArchiveDuration {
+  switch (v) {
+    case 60: return ThreadAutoArchiveDuration.OneHour
+    case 4320: return ThreadAutoArchiveDuration.ThreeDays
+    case 10080: return ThreadAutoArchiveDuration.OneWeek
+    default: return ThreadAutoArchiveDuration.OneDay
+  }
+}
+
 const mcp = new Server(
   { name: 'arra-oracle-discord', version: '0.1.0' },
   {
@@ -712,17 +725,18 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const name = args.name as string
         const messageId = args.message_id as string | undefined
         const opening = args.message as string | undefined
-        const autoArchiveDuration = (args.auto_archive_minutes as number | undefined) ?? 1440
+        const autoArchiveDuration = toArchiveDuration(args.auto_archive_minutes)
 
-        let thread: any // AnyThreadChannel | ThreadChannel — union across the two create paths
+        let thread: AnyThreadChannel
         if (messageId) {
           // hang the thread off an existing message (mirrors Hermes replying-in-thread)
           const msg = await ch.messages.fetch(messageId)
           thread = await msg.startThread({ name, autoArchiveDuration })
         } else {
-          // standalone thread on the channel
+          // standalone thread on the channel — `in` narrows to the manager-bearing
+          // channel types (text/announcement); default thread type is public
           if (!('threads' in ch)) throw new Error('channel does not support threads')
-          thread = await (ch as any).threads.create({ name, autoArchiveDuration, type: ChannelType.PublicThread })
+          thread = await ch.threads.create({ name, autoArchiveDuration })
         }
         if (opening) {
           const sent = await thread.send(opening)

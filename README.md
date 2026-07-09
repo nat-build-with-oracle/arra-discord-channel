@@ -45,8 +45,21 @@ claude --dangerously-load-development-channels server:mqtt server:arra-oracle-di
   A channel must be allowlisted (`access-ctl group add <channelId>`) before the bot
   will send there; threads inherit their parent channel's allowlist.
 
-## Provenance
+## Provenance & patch stack
 
 Fork base: `claude-plugins-official/discord` 0.0.4 · identity renamed to
 `arra-oracle-discord` so it never clashes with the upstream plugin. Bundled
 upstream skills were removed (access is our `access-ctl.ts`).
+
+Our whole delta lives as reviewable diffs in `patches/`, applied in order on
+pristine upstream `server.ts`:
+
+1. `patches/discord-access-group-key-validation.patch` — chaiklang (Yutthakit)
+   group-key footgun guard (upstream PR#2807, closed)
+2. `patches/arra-oracle-discord-fork.patch` — this fork: identity, tagging
+   (`mention_users`/`mention_roles` + scoped `allowed_mentions`), `create_thread`,
+   `toArchiveDuration` helper, instructions
+
+Round-trip verified: upstream + both patches == `server.ts` here, byte-identical.
+When upstream ships a new version, re-apply the stack (`git apply`) and regenerate
+patch 2 from the resolved result.

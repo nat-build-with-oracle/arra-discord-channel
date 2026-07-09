@@ -6,7 +6,6 @@
     "lib": ["ESNext", "DOM"],
     "types": ["node", "bun"],
     "strict": true,
-    "noImplicitAny": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
