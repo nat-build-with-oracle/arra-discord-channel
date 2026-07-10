@@ -73,7 +73,7 @@
     },
     "autoThread": {
       "type": "boolean",
-      "description": "Hermes-style: @-mention in a channel → the bot opens a thread and replies inside it."
+      "description": "Thread-on-request: @-mention + the word 'thread'/'เธรด' (or '/thread <name>') → the bot opens a thread and replies inside it. Plain mentions reply in-channel."
     }
   }
 }

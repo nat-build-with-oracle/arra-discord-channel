@@ -126,7 +126,7 @@ type Access = {
   textChunkLimit?: number
   /** Split on paragraph boundaries instead of hard char count. */
   chunkMode?: 'length' | 'newline'
-  /** Hermes-style auto_thread: when the bot is @-mentioned in a channel (not already a thread), open a thread off the message and route the reply into it. */
+  /** Thread-on-request: when @-mentioned AND the message asks for a thread ("/thread <name>" or the word thread/เธรด), open a thread off the message and route the reply into it. Plain mentions reply in-channel. */
   autoThread?: boolean
 }
 
@@ -962,30 +962,43 @@ async function handleInbound(msg: Message): Promise<void> {
     void msg.react(access.ackReaction).catch(() => {})
   }
 
-  // auto_thread (Hermes-style): when the bot is @-mentioned in a channel that
-  // isn't already a thread, open a thread off the triggering message and route
-  // the conversation into it — chat_id becomes the new thread id, so the model's
-  // reply lands in the thread with no extra tool call. Gated on a real mention so
-  // ambient channel chatter doesn't spawn a thread per message.
+  // auto_thread v2 — thread-on-request (Nat, 2026-07-10): a plain @-mention is a
+  // NORMAL action, the reply stays in the channel. A thread opens ONLY when the
+  // mention explicitly asks for one:
+  //   "@bot /thread ชื่องาน"            → thread named "ชื่องาน"
+  //   "@bot ...thread..." / "...เธรด..." → thread, name = message minus the keyword
+  // (v1 opened a thread on EVERY mention — Hermes default; too noisy for a shared room.)
   if (
     access.autoThread &&
     !msg.channel.isThread() &&
     msg.channel.type !== ChannelType.DM &&
     (await isMentioned(msg, access.mentionPatterns))
   ) {
-    try {
+    const text = msg.content.replace(/<@!?&?\d+>/g, '').replace(/\s+/g, ' ').trim()
+    const slash = text.match(/^\/thread\b[:\s]*(.*)$/i)
+    const keyword = slash ? null : text.match(/\bthread\b|เธรด/i)
+    if (slash || keyword) {
+      // Thread name: the explicit "/thread <name>", or the message minus the keyword.
+      // Trailing Thai politeness particles are dropped ("นี่ครับ" → "นี่").
       const title =
-        msg.content.replace(/<@!?&?\d+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'thread'
-      const thread = await msg.startThread({ name: title })
-      chat_id = thread.id
-      dlog(`arra-discord: auto_thread → ${thread.id} off msg ${msg.id}\n`)
-    } catch (e) {
-      // Hermes lesson (#20243): auto_thread IS the routing target — on failure do NOT
-      // silently fall back to the parent channel (that leaks the task into a shared
-      // room). Surface a visible error and skip delivery for this message.
-      dlog(`arra-discord: auto_thread FAILED — skipping delivery: ${e}\n`)
-      await msg.reply('⚠️ could not open a thread — please try again in a moment').catch(() => {})
-      return
+        (slash ? slash[1] : text.replace(/\bthread\b|เธรด/i, ''))
+          .replace(/\s+/g, ' ')
+          .trim()
+          .replace(/\s*(ครับผม|นะครับ|นะคะ|ครับ|ค่ะ|ค่า|คะ|นะ|จ้า|จ๊ะ|ฮะ)[\s!?.ๆฯ]*$/, '')
+          .trim()
+          .slice(0, 80) || 'thread'
+      try {
+        const thread = await msg.startThread({ name: title })
+        chat_id = thread.id
+        dlog(`arra-discord: auto_thread → ${thread.id} ("${title}") off msg ${msg.id}\n`)
+      } catch (e) {
+        // Hermes lesson (#20243): a REQUESTED thread is the routing target — on failure
+        // do NOT silently fall back to the parent channel (that leaks the task into a
+        // shared room). Surface a visible error and skip delivery for this message.
+        dlog(`arra-discord: auto_thread FAILED — skipping delivery: ${e}\n`)
+        await msg.reply('⚠️ could not open a thread — please try again in a moment').catch(() => {})
+        return
+      }
     }
   }
   // (starter-message dedup that Hermes needs is handled upstream by `if (msg.author.bot) return`
