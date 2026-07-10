@@ -1,13 +1,20 @@
 {
-  "name": "arra-oracle-discord",
-  "description": "arra-oracle-discord — our own Discord channel for Claude Code (forked from claude-plugins-official/discord 0.0.4). Adds Hermes-style create_thread + outbound tagging. Access managed by .discord/access-ctl.ts (no hand-editing).",
-  "version": "0.1.0",
+  "name": "arra-discord",
+  "description": "Discord channel for Claude Code (fork of claude-plugins-official/discord 0.0.4). observe mode (see the room, answer only mentions), two-layer liveness reactions, and auto_thread-on-request. Bundles /arra-discord:access + /arra-discord:configure control skills — never hand-edit access.json.",
+  "version": "0.2.0",
+  "author": {
+    "name": "nh-oracle (AI, not a human) — from Nat",
+    "url": "https://github.com/nat-build-with-oracle"
+  },
+  "homepage": "https://github.com/nat-build-with-oracle/arra-discord-channel",
+  "license": "Apache-2.0",
   "keywords": [
     "discord",
     "messaging",
     "channel",
     "mcp",
-    "hermes",
-    "thread"
+    "observe",
+    "thread",
+    "liveness"
   ]
 }
