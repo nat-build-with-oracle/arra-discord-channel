@@ -57,7 +57,7 @@
     },
     "ackReaction": {
       "type": "string",
-      "description": "Emoji reacted on receipt. Empty string disables."
+      "description": "Read-receipt emoji reacted on EVERY delivered message (observe included). Unset = default 👀. Empty string disables."
     },
     "replyToMode": {
       "enum": ["off", "first", "all"],
