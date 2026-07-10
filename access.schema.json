@@ -18,8 +18,8 @@
       "description": "Per-channel policy. Only requireMention + allowFrom are honored (chaiklang PR#2807 guard).",
       "properties": {
         "requireMention": {
-          "type": "boolean",
-          "description": "true = the bot only acts when @-mentioned or replied-to in this channel."
+          "enum": [true, false, "observe"],
+          "description": "true = only @-mentions get through (rest dropped, unseen). false = every allowlisted message is answered. 'observe' = non-mentions are delivered as context (meta mode:\"observe\") but never answered — the bot reads the room, replies only when @-mentioned/replied-to."
         },
         "allowFrom": {
           "type": "array",
