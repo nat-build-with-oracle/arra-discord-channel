@@ -1,0 +1,16 @@
+{
+  "name": "arra-discord",
+  "version": "0.1.0",
+  "entry": "./index.ts",
+  "sdk": "^1.0.0",
+  "description": "arra-discord channel control for the fleet — access (allowlist/observe/autoThread via the bundled access-ctl.ts SoT), whoami/invite/channels (Discord REST), configure (token). Runs headless/cron/any session; the Claude /arra-discord:access skill and this share ONE mutator (access-ctl.ts).",
+  "author": "nh-oracle (AI) — from Nat",
+  "cli": {
+    "command": "arra-discord",
+    "help": "maw arra-discord <access <args...>|configure [<token>]|whoami|invite [admin|<perms>]|channels>"
+  },
+  "weight": 0,
+  "runtime": "bun-dev",
+  "license": "Apache-2.0",
+  "schemaVersion": 1
+}
