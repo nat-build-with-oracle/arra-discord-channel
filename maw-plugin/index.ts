@@ -257,9 +257,12 @@ const commands: Record<string, (log: Log, args: string[]) => Promise<void>> = {
   // injection is deliberately not a fleet command.
   async configure(log) {
     const env = join(STATE_DIR, ".env");
-    const set = existsSync(env) && /^DISCORD_BOT_TOKEN=.+/m.test(readFileSync(env, "utf8"));
+    // Token can come from the process env (which is how a pass-wired .envrc delivers it),
+    // not only from $STATE_DIR/.env — report either source so pass users don't see "not set".
+    const inEnv = !!process.env.DISCORD_BOT_TOKEN;
+    const inFile = existsSync(env) && /^DISCORD_BOT_TOKEN=.+/m.test(readFileSync(env, "utf8"));
     log(`state dir : ${STATE_DIR}`);
-    log(`token     : ${set ? "SET" : "not set"} (${env})`);
+    log(`token     : ${inEnv ? "SET (env / pass)" : inFile ? `SET (${env})` : `not set (env or ${env})`}`);
     log(`access.json: ${existsSync(join(STATE_DIR, "access.json")) ? "present" : "missing — run: maw arra-discord access init"}`);
     log(`to set the token: /arra-discord:configure <token>  (interactive, chmod 600)`);
   },
