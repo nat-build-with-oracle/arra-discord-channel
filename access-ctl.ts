@@ -156,6 +156,8 @@ switch (cmd) {
     const a = read()
     const p = a.pending?.[code]
     if (!p) throw new Error(`no pending pairing for code ${code}`)
+    // senderId becomes a path segment below — never trust it (defense in depth vs a seeded pending)
+    if (!/^[0-9]{5,}$/.test(String(p.senderId))) throw new Error(`pending ${code} has a non-snowflake senderId — refusing`)
     if (p.expiresAt && p.expiresAt < Date.now()) { delete a.pending[code]; write(a); throw new Error(`code ${code} expired`) }
     if (!a.allowFrom.includes(p.senderId)) a.allowFrom.push(p.senderId)
     delete a.pending[code]
@@ -182,6 +184,34 @@ switch (cmd) {
     else if (val === 'true' || val === 'false') a[key] = val === 'true'
     else a[key] = val
     write(a as unknown as Access); console.log(`${key} = ${val}`)
+    break
+  }
+  case 'import': {
+    // Replace the whole file from JSON on stdin (the "edit the code + save" path). Still
+    // the ONE mutator: parsed, validated, atomically written — never a blind file clobber.
+    const text = await Bun.stdin.text()
+    let obj: Access
+    try { obj = JSON.parse(text) } catch { throw new Error('invalid JSON') }
+    if (!['pairing', 'allowlist', 'disabled'].includes(obj.dmPolicy)) throw new Error('dmPolicy must be pairing|allowlist|disabled')
+    if (!Array.isArray(obj.allowFrom)) throw new Error('allowFrom must be an array')
+    if (typeof obj.groups !== 'object' || obj.groups === null) throw new Error('groups must be an object')
+    for (const [ch, g] of Object.entries(obj.groups)) {
+      if (![true, false, 'observe'].includes((g as Group)?.requireMention)) throw new Error(`groups[${ch}].requireMention must be true|false|"observe"`)
+      if (!Array.isArray((g as Group)?.allowFrom)) throw new Error(`groups[${ch}].allowFrom must be an array`)
+    }
+    // pending arms pair()'s file-write (join(APPROVED_DIR, senderId)) — validate every
+    // entry so imported JSON can't seed a path-traversal senderId.
+    for (const [code, p] of Object.entries(obj.pending ?? {})) {
+      const pp = (p ?? {}) as Record<string, unknown>
+      if (!/^[0-9]{5,}$/.test(String(pp.senderId))) throw new Error(`pending[${code}].senderId must be a snowflake`)
+      if (pp.chatId !== undefined && typeof pp.chatId !== 'string') throw new Error(`pending[${code}].chatId must be a string`)
+    }
+    const OK_TOP = new Set(['$schema', 'dmPolicy', 'allowFrom', 'groups', 'pending', 'mentionPatterns', 'ackReaction', 'replyToMode', 'textChunkLimit', 'chunkMode', 'autoThread'])
+    for (const k of Object.keys(obj)) if (!OK_TOP.has(k)) throw new Error(`unknown top-level key: ${k}`)
+    obj.pending = obj.pending ?? {}
+    delete (obj as Record<string, unknown>).$schema
+    write(obj)
+    console.log('imported')
     break
   }
   default:

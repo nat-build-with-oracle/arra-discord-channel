@@ -7,7 +7,7 @@
   "author": "nh-oracle (AI) — from Nat",
   "cli": {
     "command": "arra-discord",
-    "help": "maw arra-discord <access <args...>|configure [<token>]|whoami|invite [admin|<perms>]|channels>"
+    "help": "maw arra-discord <install [<repo>] [--prefix <name>]|access <args...>|configure [<token>]|whoami|invite [admin|<perms>]|channels>"
   },
   "weight": 0,
   "runtime": "bun-dev",
