@@ -160,12 +160,21 @@ const commands: Record<string, (log: Log, args: string[]) => Promise<void>> = {
 
     // 3) .envrc — append the channel env block ONCE. Guard on the real export line (not a
     // comment) so a differently-worded prior setup still counts as "already wired".
+    // Token source: if `pass show discord/<prefix>-oracle-token` resolves (the fleet
+    // convention), wire it LIVE; otherwise leave it commented for the operator to fill in.
+    // Override with --pass <path> or --no-pass.
     const envrc = join(target, ".envrc");
     const MARK = 'DISCORD_STATE_DIR="$PWD/.discord"';
+    const noPass = rest.includes("--no-pass");
+    const passPath = opt("--pass") ?? `discord/${prefix}-oracle-token`;
+    const passOk = !noPass && (await sh(() => {}, ["pass", "show", passPath]));
+    const tokenLine = passOk
+      ? `export DISCORD_BOT_TOKEN="$(pass show ${passPath})"`
+      : `#export DISCORD_BOT_TOKEN="$(pass show ${passPath})"   # ← set this, or write .discord/.env`;
     if (!(existsSync(envrc) ? readFileSync(envrc, "utf8") : "").includes(MARK)) {
-      appendFileSync(envrc, `\n${MARK} — loaded via .mcp.json ──\nexport DISCORD_STATE_DIR="$PWD/.discord"\n#export DISCORD_BOT_TOKEN="$(pass show discord/${prefix}-oracle-token)"\nexport MQTT_STATE_DIR="$PWD/mqtt-channel"\ndotenv_if_exists "$MQTT_STATE_DIR/.env"\n`);
-      log("  + .envrc channel env  (run: direnv allow)");
-    } else log("  ✓ .envrc already wired");
+      appendFileSync(envrc, `\n# ── Channels: mqtt + arra-oracle-discord — loaded via .mcp.json ──\nexport DISCORD_STATE_DIR="$PWD/.discord"\n${tokenLine}\nexport MQTT_STATE_DIR="$PWD/mqtt-channel"\ndotenv_if_exists "$MQTT_STATE_DIR/.env"\n`);
+      log(passOk ? `  + .envrc channel env — token from pass:${passPath} ✓  (run: direnv allow)` : "  + .envrc channel env  (token: set .discord/.env or a pass entry)");
+    } else log(`  ✓ .envrc already wired${passOk ? ` (pass:${passPath} available)` : ""}`);
 
     // 4) mqtt-channel/.env — ALWAYS pin the per-oracle topic prefix. The channel repo ships
     // a committed .env (with another oracle's prefix), so "write if missing" would collide on
@@ -209,8 +218,9 @@ const commands: Record<string, (log: Log, args: string[]) => Promise<void>> = {
     log("");
     log("✅ channels wired. next:");
     log("   1) direnv allow");
-    log(`   2) set the Discord token → ${discordDir}/.env  (DISCORD_BOT_TOKEN=…)  or  /arra-discord:configure <token>`);
-    log("   3) maw arra-discord access group add '*' --observe   # who the bot answers");
+    if (passOk) log(`   2) token: from pass ${passPath} ✓ (already wired) → maw arra-discord whoami  to verify`);
+    else log(`   2) set the Discord token → pass insert ${passPath}  (then re-run install), or write ${discordDir}/.env`);
+    log("   3) maw arra-discord access policy allowlist && maw arra-discord access group add '*' --observe");
     log("   4) claude --dangerously-load-development-channels server:mqtt server:arra-oracle-discord");
   },
   // access — delegate verbatim to the SoT. `maw arra-discord access group add * --observe ...`
