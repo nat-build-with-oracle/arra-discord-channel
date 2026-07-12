@@ -252,6 +252,30 @@ const commands: Record<string, (log: Log, args: string[]) => Promise<void>> = {
         if (ch.type === 0 || ch.type === 5) log(`  ${ch.id}  #${ch.name}`);
     }
   },
+  // resolve — one bare Discord snowflake → its real name. Channel first (the common case —
+  // most unresolved ids seen in fleet traffic are channels/threads), falling back to a user
+  // lookup. Same channel-then-user algorithm as nh-oracle's fleet-bus resolveDiscordName(),
+  // but exposed here as a fleet-wide maw command so any oracle can resolve without needing
+  // nh-oracle's HTTP server: `maw arra-discord resolve <id>`.
+  async resolve(log, a) {
+    const id = a[1];
+    if (!id) throw new Error("usage: maw arra-discord resolve <id>");
+    const c = await api(`/channels/${id}`);
+    if (c.ok) {
+      const kind = c.data.type === 1 ? "dm" : c.data.type === 3 ? "group-dm"
+        : (c.data.type === 11 || c.data.type === 12) ? "thread" : "channel";
+      const name = c.data.name ?? c.data.recipients?.[0]?.username ?? id;
+      log(`${kind}: ${name}  (${id})`);
+      return;
+    }
+    const chStatus = c.status;
+    const u = await api(`/users/${id}`);
+    if (u.ok) {
+      log(`user: ${u.data.global_name ?? u.data.username}  (${id})`);
+      return;
+    }
+    throw new Error(`not resolvable by this bot — channel HTTP ${chStatus}, user HTTP ${u.status} (id or permissions?)`);
+  },
   // configure — status only here (never echo the token). Token WRITES go through the
   // Claude /arra-discord:configure skill (interactive, chmod 600) — headless token
   // injection is deliberately not a fleet command.
@@ -283,7 +307,7 @@ export default async function handler(ctx: { args?: string[]; writer?: (s: strin
     else {
       log("maw arra-discord — channel control");
       log("  install [<repo>] [--prefix <name>]   wire mqtt + discord channels into an oracle repo");
-      log("  access <args...> | configure | whoami | invite [admin|<perms>] | channels");
+      log("  access <args...> | configure | whoami | invite [admin|<perms>] | channels | resolve <id>");
       log("  (access delegates to the bundled access-ctl.ts — the one mutator)");
     }
     return { ok: true, output: buf.join("\n") || undefined };
