@@ -15,11 +15,15 @@
  *   access-ctl show
  *   access-ctl init [--policy pairing|allowlist|disabled]   # create/reset (locked default: disabled)
  *   access-ctl policy <pairing|allowlist|disabled>
- *   access-ctl group add <channelId> [--no-mention] [--observe] [--allow id,id]
+ *   access-ctl group add <channelId> [--no-mention] [--observe] [--allow id,id] [--always id,id]
  *       default            → requireMention:true   (answer only @-mentions; rest DROPPED)
  *       --no-mention       → requireMention:false  (answer every allowlisted message)
  *       --observe          → requireMention:"observe" (SEE everything as context, answer only @-mentions)
  *       omit --allow       → allowFrom:[] = everyone in that channel
+ *       --always id,id     → alwaysAnswerFrom: these senders are always treated as mentioned,
+ *                             even in an 'observe' or requireMention:true group. Must be a
+ *                             subset of --allow when --allow is set (else those ids get
+ *                             dropped by allowFrom before alwaysAnswerFrom is ever checked).
  *   access-ctl group rm <channelId>
  *   access-ctl allow <add|rm> <userId>
  *   access-ctl pair <code>          # approve a pending pairing → allowFrom + write approved/<id>
@@ -42,7 +46,7 @@ const APPROVED_DIR = join(STATE_DIR, 'approved')
 const SCHEMA_REF =
   'https://raw.githubusercontent.com/nat-build-with-oracle/arra-discord-channel/main/access.schema.json'
 
-type Group = { requireMention: boolean | 'observe'; allowFrom: string[] }
+type Group = { requireMention: boolean | 'observe'; allowFrom: string[]; alwaysAnswerFrom?: string[] }
 type Pending = { senderId: string; chatId?: string; createdAt?: number; expiresAt?: number }
 type Access = {
   dmPolicy: 'pairing' | 'allowlist' | 'disabled'
@@ -61,17 +65,24 @@ const DEFAULT = (policy: Access['dmPolicy'] = 'disabled'): Access => ({
   dmPolicy: policy, allowFrom: [], groups: {}, pending: {},
 })
 
-// chaiklang discord PR#2807 guard: groups only honor requireMention + allowFrom.
+// chaiklang discord PR#2807 guard: groups only honor requireMention + allowFrom + alwaysAnswerFrom.
 // mentionPatterns/ackReaction/replyToMode/autoThread are TOP-LEVEL — nesting them in a
-// group silently does nothing. `group add` only writes the two valid keys, but a
+// group silently does nothing. `group add` only writes the valid keys, but a
 // hand-edited file can stray, so warn on every read.
-const GROUP_KEYS = new Set(['requireMention', 'allowFrom'])
+const GROUP_KEYS = new Set(['requireMention', 'allowFrom', 'alwaysAnswerFrom'])
 function warnStrayGroupKeys(a: Access): void {
   for (const [chan, policy] of Object.entries(a.groups ?? {})) {
     for (const key of Object.keys((policy ?? {}) as Record<string, unknown>)) {
       if (!GROUP_KEYS.has(key)) {
-        process.stderr.write(`access-ctl: access.json groups[${JSON.stringify(chan)}].${key} is ignored — groups only support requireMention and allowFrom; mentionPatterns/ackReaction/replyToMode/autoThread are top-level keys.\n`)
+        process.stderr.write(`access-ctl: access.json groups[${JSON.stringify(chan)}].${key} is ignored — groups only support requireMention, allowFrom and alwaysAnswerFrom; mentionPatterns/ackReaction/replyToMode/autoThread are top-level keys.\n`)
       }
+    }
+    // alwaysAnswerFrom that isn't a subset of a non-empty allowFrom is dead config —
+    // groupAllowFrom drops the sender before alwaysAnswerFrom is ever checked (server.ts gate()).
+    const always = (policy as Group)?.alwaysAnswerFrom ?? []
+    const allow = (policy as Group)?.allowFrom ?? []
+    if (allow.length > 0 && always.some(id => !allow.includes(id))) {
+      process.stderr.write(`access-ctl: access.json groups[${JSON.stringify(chan)}].alwaysAnswerFrom has ids not in allowFrom — they will be dropped before alwaysAnswerFrom is checked. Add them to allowFrom too, or clear allowFrom.\n`)
     }
   }
 }
@@ -123,17 +134,20 @@ switch (cmd) {
   case 'group': {
     const a = read()
     if (sub === 'add') {
-      const chan = args[0]; if (!chan) throw new Error('group add <channelId> [--no-mention|--observe] [--allow id,id]')
+      const chan = args[0]; if (!chan) throw new Error('group add <channelId> [--no-mention|--observe] [--allow id,id] [--always id,id]')
       const noMention = flag(args, '--no-mention')
       const observe = flag(args, '--observe')
       const allowRaw = opt(args, '--allow')
+      const alwaysRaw = opt(args, '--always')
       const requireMention: Group['requireMention'] = observe ? 'observe' : !noMention
+      const alwaysAnswerFrom = alwaysRaw ? alwaysRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined
       a.groups[chan] = {
         requireMention,
         allowFrom: allowRaw ? allowRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+        ...(alwaysAnswerFrom?.length ? { alwaysAnswerFrom } : {}),
       }
       write(a)
-      console.log(`group add ${chan} → requireMention=${requireMention}, allowFrom=${a.groups[chan].allowFrom.length ? a.groups[chan].allowFrom.join(',') : '(everyone)'}`)
+      console.log(`group add ${chan} → requireMention=${requireMention}, allowFrom=${a.groups[chan].allowFrom.length ? a.groups[chan].allowFrom.join(',') : '(everyone)'}${alwaysAnswerFrom?.length ? `, alwaysAnswerFrom=${alwaysAnswerFrom.join(',')}` : ''}`)
     } else if (sub === 'rm') {
       const chan = args[0]; delete a.groups[chan]; write(a)
       console.log(`group rm ${chan}`)
@@ -198,6 +212,7 @@ switch (cmd) {
     for (const [ch, g] of Object.entries(obj.groups)) {
       if (![true, false, 'observe'].includes((g as Group)?.requireMention)) throw new Error(`groups[${ch}].requireMention must be true|false|"observe"`)
       if (!Array.isArray((g as Group)?.allowFrom)) throw new Error(`groups[${ch}].allowFrom must be an array`)
+      if ((g as Group)?.alwaysAnswerFrom !== undefined && !Array.isArray((g as Group).alwaysAnswerFrom)) throw new Error(`groups[${ch}].alwaysAnswerFrom must be an array`)
     }
     // pending arms pair()'s file-write (join(APPROVED_DIR, senderId)) — validate every
     // entry so imported JSON can't seed a path-traversal senderId.

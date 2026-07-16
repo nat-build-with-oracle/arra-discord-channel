@@ -112,6 +112,11 @@ type GroupPolicy = {
    *  — the session sees them and must not reply; only @-mentions get answered. */
   requireMention: boolean | 'observe'
   allowFrom: string[]
+  /** Sender ids treated as always-mentioned, regardless of requireMention (true/false/'observe').
+   *  Checked before the mention/observe branch — matching senders get {action:'deliver'} directly,
+   *  never the observe path. Still subject to groupAllowFrom: a non-empty allowFrom that excludes
+   *  a sender here drops them before this check ever runs — keep this a subset of allowFrom. */
+  alwaysAnswerFrom?: string[]
 }
 
 type Access = {
@@ -166,13 +171,13 @@ function readAccessFile(): Access {
   try {
     const raw = readFileSync(ACCESS_FILE, 'utf8')
     const parsed = JSON.parse(raw) as Partial<Access>
-    const GROUP_KEYS = new Set(['requireMention', 'allowFrom'])
+    const GROUP_KEYS = new Set(['requireMention', 'allowFrom', 'alwaysAnswerFrom'])
     for (const [chan, policy] of Object.entries(parsed.groups ?? {})) {
       for (const key of Object.keys((policy ?? {}) as Record<string, unknown>)) {
         if (!GROUP_KEYS.has(key)) {
           process.stderr.write(
             `discord: access.json groups[${JSON.stringify(chan)}].${key} is ignored — ` +
-              `groups only support requireMention and allowFrom; ` +
+              `groups only support requireMention, allowFrom and alwaysAnswerFrom; ` +
               `mentionPatterns, ackReaction and replyToMode are top-level keys.\n`,
           )
         }
@@ -313,6 +318,13 @@ async function gate(msg: Message): Promise<GateResult> {
   const requireMention = policy.requireMention ?? true
   if (groupAllowFrom.length > 0 && !groupAllowFrom.includes(senderId)) {
     return { action: 'drop' }
+  }
+  // alwaysAnswerFrom (Nat/nh, 2026-07-16): senders here are treated as always-mentioned —
+  // checked before the mention/observe branch so they never hit the observe path, even in
+  // a requireMention:'observe' group. Still gated by groupAllowFrom above: a sender excluded
+  // from a non-empty allowFrom is dropped before this line ever runs.
+  if (policy.alwaysAnswerFrom?.includes(senderId)) {
+    return { action: 'deliver', access }
   }
   if (requireMention && !(await isMentioned(msg, access.mentionPatterns))) {
     // 'observe' (Nat, 2026-07-10): deliver un-mentioned messages as CONTEXT — the
