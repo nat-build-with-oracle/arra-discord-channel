@@ -50,13 +50,16 @@ Guild channels are off by default. Opt each one in individually, keyed on the **
 /discord:access group add 846209781206941736
 ```
 
-With the default `requireMention: true`, the bot responds only when @mentioned or replied to. Pass `--no-mention` to process every message in the channel, or `--allow id1,id2` to restrict which members can trigger it.
+With the default `requireMention: true`, the bot responds only when @mentioned or replied to. Pass `--no-mention` to process every message in the channel, `--observe` to see every message as context but only answer @-mentions, `--allow id1,id2` to restrict which members can trigger it, or `--always id1,id2` to have specific senders always treated as mentioned (they get answered like a DM even in a `--no-mention`/`--observe` group, while everyone else keeps the group's normal behavior).
 
 ```
 /discord:access group add 846209781206941736 --no-mention
 /discord:access group add 846209781206941736 --allow 184695080709324800,221773638772129792
+/discord:access group add 846209781206941736 --observe --always 184695080709324800
 /discord:access group rm 846209781206941736
 ```
+
+`--always` ids must be a subset of `--allow` when `--allow` is set — `allowFrom` drops non-members before `alwaysAnswerFrom` is ever checked, so an id missing from `--allow` is silently dropped rather than always-answered.
 
 ## Mention detection
 
@@ -99,7 +102,7 @@ Configure outbound behavior with `/discord:access set <key> <value>`.
 | `/discord:access allow 184695080709324800` | Add a user snowflake directly. |
 | `/discord:access remove 184695080709324800` | Remove from the allowlist. |
 | `/discord:access policy allowlist` | Set `dmPolicy`. Values: `pairing`, `allowlist`, `disabled`. |
-| `/discord:access group add 846209781206941736` | Enable a guild channel. Flags: `--no-mention`, `--allow id1,id2`. |
+| `/discord:access group add 846209781206941736` | Enable a guild channel. Flags: `--no-mention`, `--observe`, `--allow id1,id2`, `--always id1,id2`. |
 | `/discord:access group rm 846209781206941736` | Disable a guild channel. |
 | `/discord:access set ackReaction 🔨` | Set a config key: `ackReaction`, `replyToMode`, `textChunkLimit`, `chunkMode`, `mentionPatterns`. |
 
@@ -118,10 +121,15 @@ Configure outbound behavior with `/discord:access set <key> <value>`.
   // Guild channels the bot is active in. Empty object = DM-only.
   "groups": {
     "846209781206941736": {
-      // true: respond only to @mentions and replies.
+      // true: respond only to @mentions and replies. Also accepts false (answer everyone)
+      // and "observe" (see every message as context, answer only @-mentions).
       "requireMention": true,
       // Restrict triggers to these senders. Empty = any member (subject to requireMention).
-      "allowFrom": []
+      "allowFrom": [],
+      // Optional: these senders are always treated as mentioned, regardless of
+      // requireMention — answered like a DM. Must be a subset of allowFrom when
+      // allowFrom is non-empty, else they get dropped by allowFrom first.
+      "alwaysAnswerFrom": []
     }
   },
 

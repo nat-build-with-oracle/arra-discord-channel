@@ -48,7 +48,8 @@ Arguments passed: `$ARGUMENTS`
   "groups": {
     "*": {                                          // "*" = every channel/server; or a channelId
       "requireMention": true | false | "observe",   // ← see table below
-      "allowFrom": ["<userId>", ...]                //  [] = EVERYONE in that channel (empty = allow-all!)
+      "allowFrom": ["<userId>", ...],               //  [] = EVERYONE in that channel (empty = allow-all!)
+      "alwaysAnswerFrom": ["<userId>", ...]          //  optional: these senders always treated as mentioned
     }
   },
   "pending": { "<code>": { "senderId", "chatId", "expiresAt" } },
@@ -66,6 +67,15 @@ Arguments passed: `$ARGUMENTS`
 | `false` | every allowlisted message | every message (noisy in shared rooms) |
 | `"observe"` | **every message** (as context, tagged `mode="observe"`) | **only @-mentions** |
 
+**`alwaysAnswerFrom` — per-sender bypass, any `requireMention` value:** senders in this list are
+treated as always-mentioned — checked *before* the mention/observe branch, so they never hit the
+observe path even in an `"observe"` group. Answers them like a DM while everyone else in the group
+keeps the group's normal behavior (e.g. `observe` + `allowFrom: []` + `alwaysAnswerFrom: [Nat's id]`
+= the whole room is seen as context, but only Nat gets answered without tagging). Must be a subset
+of `allowFrom` when `allowFrom` is non-empty — `allowFrom` drops non-members before
+`alwaysAnswerFrom` is ever checked, so an id missing from `allowFrom` is silently dropped instead of
+always-answered. `access-ctl.ts` warns on `show`/write if this constraint is violated.
+
 ## Dispatch
 
 | user intent | run |
@@ -77,6 +87,7 @@ Arguments passed: `$ARGUMENTS`
 | a channel: mention-only | `access-ctl.ts group add <chan\|*> --allow id,id` |
 | a channel: answer everything | `access-ctl.ts group add <chan\|*> --no-mention --allow id,id` |
 | a channel: **observe** (see all, answer mentions) | `access-ctl.ts group add <chan\|*> --observe --allow id,id` |
+| a channel: observe all, always-answer specific senders | `access-ctl.ts group add <chan\|*> --observe --always id,id` (omit `--allow` to keep observing everyone else) |
 | open a channel to everyone | omit `--allow` (allowFrom becomes `[]`) |
 | remove a channel rule | `access-ctl.ts group rm <chan>` |
 | auto-thread on/off | `access-ctl.ts set autoThread true\|false` |

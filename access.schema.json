@@ -15,7 +15,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["requireMention", "allowFrom"],
-      "description": "Per-channel policy. Only requireMention + allowFrom are honored (chaiklang PR#2807 guard).",
+      "description": "Per-channel policy. Only requireMention + allowFrom + alwaysAnswerFrom are honored (chaiklang PR#2807 guard).",
       "properties": {
         "requireMention": {
           "enum": [true, false, "observe"],
@@ -25,6 +25,11 @@
           "type": "array",
           "items": { "$ref": "#/definitions/snowflake" },
           "description": "User ids allowed to drive the bot here. [] = EVERYONE (empty = allow-all, not deny-all)."
+        },
+        "alwaysAnswerFrom": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/snowflake" },
+          "description": "Sender ids treated as always-mentioned, regardless of requireMention (works with true/false/'observe'). Checked before the mention/observe branch, so these senders never hit the observe path — the bot answers them like a DM while everyone else in the group keeps the group's normal requireMention behavior. Must be a subset of allowFrom when allowFrom is non-empty: allowFrom drops non-members first, before alwaysAnswerFrom is ever checked."
         }
       }
     }
